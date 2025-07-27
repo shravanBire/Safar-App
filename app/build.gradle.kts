@@ -92,4 +92,7 @@ dependencies {
 
     // For StateFlow collection in Compose
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.6.2")
+
+    //Maplibre
+    implementation("org.maplibre.gl:android-sdk:11.8.0")
 }

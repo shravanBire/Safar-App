@@ -12,10 +12,19 @@ import androidx.compose.ui.Modifier
 import androidx.navigation.compose.rememberNavController
 import com.example.safar.Screens.AppNavigation
 import com.example.safar.Screens.BottomNavBar
+import org.maplibre.android.MapLibre
+import org.maplibre.android.WellKnownTileServer
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        MapLibre.getInstance(
+            applicationContext,
+            "",
+            WellKnownTileServer.MapTiler
+        )
+
         setContent {
             SafarTheme {
                 Surface(
@@ -35,4 +44,3 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
-
