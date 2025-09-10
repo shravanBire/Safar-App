@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.Style
@@ -14,53 +13,62 @@ import org.maplibre.android.geometry.LatLng
 import com.example.safar.data.models.LocationData
 import org.maplibre.android.annotations.Marker
 import org.maplibre.android.annotations.MarkerOptions
+import org.maplibre.android.camera.CameraUpdateFactory
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.platform.LocalContext // Add this import
+import androidx.compose.ui.unit.dp
 import org.maplibre.android.annotations.PolylineOptions
-import org.maplibre.android.camera.CameraUpdateFactory // Add this import
 
 @Composable
 fun OpenStreetMapView(
     modifier: Modifier = Modifier,
     bikeLocation: LocationData?
 ) {
-    // Keep a reference to the latest marker so we can remove it later
+    val context = LocalContext.current
     var marker: Marker? = null
 
-    AndroidView(
-        factory = { context ->
-            MapView(context).apply {
-                onCreate(null)
-                getMapAsync { mapLibreMap ->
-                    mapLibreMap.setStyle(
-                        Style.Builder().fromUri("https://tiles.openfreemap.org/styles/liberty")
-                    )
-                    // Initial camera position (e.g., center of India)
-                    mapLibreMap.cameraPosition = CameraPosition.Builder()
-                        .target(LatLng(20.5937, 78.9629))
-                        .zoom(4.0)
-                        .build()
-                }
+    val mapView = remember {
+        MapView(context).apply {
+            onCreate(null)
+            getMapAsync { mapLibreMap ->
+                mapLibreMap.setStyle(
+                    Style.Builder().fromUri("https://tiles.openfreemap.org/styles/liberty")
+                )
+                mapLibreMap.cameraPosition = CameraPosition.Builder()
+                    .target(LatLng(20.5937, 78.9629))
+                    .zoom(4.0)
+                    .build()
             }
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            mapView.onDestroy()
+        }
+    }
+
+    AndroidView(
+        factory = {
+            mapView
         },
         modifier = modifier.fillMaxWidth().height(500.dp),
-        update = { mapView ->
-            // This block runs whenever the composable state changes
-            bikeLocation?.let {
-                mapView.getMapAsync { map ->
-                    // Remove the old marker if it exists
+        update = { managedMapView -> // Use a descriptive name like managedMapView
+            bikeLocation?.let { data -> // Use a descriptive name like data
+                managedMapView.getMapAsync { map ->
                     marker?.let { oldMarker ->
                         map.removeMarker(oldMarker)
                     }
 
-                    val bikeLatLng = LatLng(it.latitude, it.longitude)
+                    val bikeLatLng = LatLng(data.latitude, data.longitude)
 
-                    // Add the new marker at the bike's location
                     marker = map.addMarker(
                         MarkerOptions()
                             .position(bikeLatLng)
                             .title("Bike Location")
                     )
 
-                    // Animate the camera to the new location
                     val cameraPosition = CameraPosition.Builder()
                         .target(bikeLatLng)
                         .zoom(15.0)
