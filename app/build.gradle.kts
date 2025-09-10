@@ -2,6 +2,8 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("kotlin-kapt")
+
+    id("org.jetbrains.kotlin.plugin.serialization")
 }
 
 android {
@@ -41,7 +43,7 @@ android {
         compose = true
     }
     composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.1"
+        kotlinCompilerExtensionVersion = "1.5.8"
     }
     packaging {
         resources {
@@ -66,6 +68,8 @@ dependencies {
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
+    implementation ("com.google.accompanist:accompanist-permissions:0.36.0")
+
 
     // Jetpack Compose
     implementation("androidx.activity:activity-compose:1.8.2")
@@ -95,4 +99,23 @@ dependencies {
 
     //Maplibre
     implementation("org.maplibre.gl:android-sdk:11.8.0")
+
+    // Supabase
+    implementation("io.github.jan-tennert.supabase:gotrue-kt:2.4.0")
+    implementation("io.github.jan-tennert.supabase:postgrest-kt:2.4.0")
+    implementation("io.github.jan-tennert.supabase:storage-kt:2.4.0")
+    implementation("io.github.jan-tennert.supabase:realtime-kt:2.4.0")
+
+// Location Services
+    implementation("com.google.android.gms:play-services-location:21.2.0")
+
+    // Kotlinx Serialization and Datetime
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-datetime:0.5.0")
+
+
+    implementation("org.jetbrains.kotlinx:kotlinx-datetime:0.5.0")
+
+    implementation("io.ktor:ktor-client-okhttp:2.3.11")
+
 }

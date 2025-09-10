@@ -19,7 +19,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 @Composable
 fun BottomNavBar(navController: NavController) {
     val items = listOf(
-        BottomBar.Home, BottomBar.Trips, BottomBar.Statistics, BottomBar.Settings
+        BottomBar.Home, BottomBar.Trips, BottomBar.Settings
     )
     NavigationBar {
         val navBackStackEntry = navController.currentBackStackEntryAsState()
@@ -39,7 +39,6 @@ fun BottomNavBar(navController: NavController) {
                     when (screen) {
                         is BottomBar.Home -> Icon(Icons.Default.Home, "Home")
                         is BottomBar.Trips -> Icon(Icons.AutoMirrored.Filled.List, "Trips")
-                        is BottomBar.Statistics -> Icon(Icons.Default.DateRange, "Stats")
                         is BottomBar.Settings -> Icon(Icons.Default.Settings, "Settings")
                     }
                 },

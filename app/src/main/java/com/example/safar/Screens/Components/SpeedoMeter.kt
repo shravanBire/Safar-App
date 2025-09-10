@@ -36,7 +36,8 @@ fun Speedometer(
     arcColor: Color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f),
     speedColor: Color = MaterialTheme.colorScheme.primary,
     tickColor: Color = MaterialTheme.colorScheme.onSurface,
-    textColor: Color = MaterialTheme.colorScheme.onSurface
+    textColor: Color = MaterialTheme.colorScheme.onSurface,
+    unitLabel: String = "km/h"
 ) {
     val startAngle = 135f
     val sweepAngle = 270f
@@ -146,7 +147,7 @@ fun Speedometer(
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "km/h",
+                    text = unitLabel,
                     color = textColor,
                     fontSize = 18.sp
                 )
