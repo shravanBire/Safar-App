@@ -46,6 +46,9 @@ import org.maplibre.android.maps.MapView
 fun HomeScreen(
     unitViewModel: UnitViewModel
 ) {
+    val Location by LocationViewModel.bikeLocation.collectAsState()
+    val currentSpeed = Location?.speed?.toInt() ?: 0
+
     val currentUnit = unitViewModel.unit.value
 
     val locationRepository = LocationRepository()

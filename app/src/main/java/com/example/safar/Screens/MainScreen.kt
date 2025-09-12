@@ -1,7 +1,6 @@
 package com.example.safar.Screens
 
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Settings
@@ -38,7 +37,7 @@ fun BottomNavBar(navController: NavController) {
                 icon = {
                     when (screen) {
                         is BottomBar.Home -> Icon(Icons.Default.Home, "Home")
-                        is BottomBar.Trips -> Icon(Icons.AutoMirrored.Filled.List, "Trips")
+                        is BottomBar.Trips -> Icon(Icons.Default.DateRange, "Trips")
                         is BottomBar.Settings -> Icon(Icons.Default.Settings, "Settings")
                     }
                 },

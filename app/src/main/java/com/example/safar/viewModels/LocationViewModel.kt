@@ -8,6 +8,22 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
+//class LocationViewModel(
+//    private val repo: LocationRepository
+//) : ViewModel() {
+//
+//    private val _bikeLocation = MutableStateFlow<LocationData?>(null)
+//    val bikeLocation = _bikeLocation.asStateFlow()
+//
+//    fun fetchLatestBikeLocation() {
+//        viewModelScope.launch {
+//            val location = repo.getLatestBikeLocation()
+//            _bikeLocation.value = location
+//        }
+//    }
+//}
+
+
 class LocationViewModel(
     private val repo: LocationRepository
 ) : ViewModel() {
@@ -15,10 +31,11 @@ class LocationViewModel(
     private val _bikeLocation = MutableStateFlow<LocationData?>(null)
     val bikeLocation = _bikeLocation.asStateFlow()
 
-    fun fetchLatestBikeLocation() {
+    init {
         viewModelScope.launch {
-            val location = repo.getLatestBikeLocation()
-            _bikeLocation.value = location
+            repo.getRealtimeBikeLocation().collect { location ->
+                _bikeLocation.value = location
+            }
         }
     }
 }
