@@ -37,11 +37,15 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.safar.Screens.Components.Speedometer
 import com.example.safar.Screens.setting.UnitViewModel
+import com.example.safar.repository.DeviceRepository
 import com.example.safar.repository.LocationRepository
+import com.example.safar.utils.DeviceSelectionViewModelFactory
+import com.example.safar.viewModels.DeviceSelectionViewModel
 import com.example.safar.viewModels.LocationViewModel
 import com.example.safar.viewModels.LocationViewModelFactory
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.rememberPermissionState
+import kotlinx.coroutines.launch
 import org.maplibre.android.camera.CameraUpdateFactory
 import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.maps.MapLibreMap
@@ -54,16 +58,35 @@ fun HomeScreen(
 ) {
     val currentUnit = unitViewModel.unit.value
 
+    // Repositories
     val locationRepository = LocationRepository()
+    val deviceRepository = DeviceRepository()
+
+    // ViewModels
     val locationViewModel: LocationViewModel = viewModel(
         factory = LocationViewModelFactory(locationRepository)
     )
 
+    val deviceViewModel: DeviceSelectionViewModel = viewModel(
+        factory = DeviceSelectionViewModelFactory(deviceRepository)
+    )
+
+    // States
     val bikeLocation by locationViewModel.bikeLocation.collectAsState()
+    val selectedDevice by deviceViewModel.selectedDevice.collectAsState()
     val currentSpeed = bikeLocation?.speed?.toInt() ?: 0
 
     var mapLibreMap by remember { mutableStateOf<MapLibreMap?>(null) }
+    var showDeviceDialog by remember { mutableStateOf(false) }
 
+    val coroutineScope = rememberCoroutineScope()
+
+    // Start tracking when device is selected
+    LaunchedEffect(selectedDevice) {
+        selectedDevice?.let { device ->
+            locationViewModel.startTrackingDevice(device.device_id)
+        }
+    }
 
     Box(
         modifier = Modifier.fillMaxSize()
@@ -78,6 +101,16 @@ fun HomeScreen(
                 fontWeight = FontWeight.ExtraBold,
                 modifier = Modifier.padding(12.dp)
             )
+
+            // Show selected device info
+            selectedDevice?.let { device ->
+                Text(
+                    text = "Tracking: ${device.device_name}",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+            }
 
             OpenStreetMapView(
                 modifier = Modifier
@@ -103,10 +136,12 @@ fun HomeScreen(
             ) {
                 Column {
                     Spacer(modifier = Modifier.height(120.dp))
-                    IconButton(onClick = { /*TODO*/ }) {
+                    IconButton(
+                        onClick = { showDeviceDialog = true }
+                    ) {
                         Icon(
                             imageVector = Icons.Default.Check,
-                            contentDescription = "Wi-Fi status",
+                            contentDescription = "Device selection",
                             modifier = Modifier.size(32.dp)
                         )
                     }
@@ -135,5 +170,28 @@ fun HomeScreen(
                 }
             }
         }
+    }
+
+    // Device Selection Dialog
+    if (showDeviceDialog) {
+        DeviceSelectionDialog(
+            onDismiss = { showDeviceDialog = false },
+            onDeviceSelected = { device ->
+                deviceViewModel.selectDevice(device)
+                // Get and show last location for the selected device
+                coroutineScope.launch {
+                    val lastLocation = deviceViewModel.getLastLocationForDevice(device.device_id)
+                    lastLocation?.let { location ->
+                        locationViewModel.updateLocationForSelectedDevice(location)
+                        // Center map on last location
+                        val target = LatLng(location.latitude, location.longitude)
+                        mapLibreMap?.animateCamera(
+                            CameraUpdateFactory.newLatLngZoom(target, 15.0)
+                        )
+                    }
+                }
+            },
+            deviceRepository = deviceRepository
+        )
     }
 }

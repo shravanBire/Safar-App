@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.safar.data.models.LocationData
 import com.example.safar.repository.LocationRepository
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
@@ -19,19 +20,50 @@ class LocationViewModel(
     private val _bikeLocation = MutableStateFlow<LocationData?>(null)
     val bikeLocation = _bikeLocation.asStateFlow()
 
-    init {
-        Log.i("SafarApp", "LocationViewModel is being initialized.")
+    private var realtimeJob: Job? = null
+    private var currentDeviceId: String? = null
 
-        // Collect realtime updates from the repository
-        viewModelScope.launch {
-            repo.observeRealtimeBikeLocation()
-                .catch { e ->
-                    Log.e("SafarApp", "Error collecting realtime location: ${e.message}", e)
-                }
-                .collect { location ->
-                    Log.d("SafarApp", "New location received in ViewModel: $location")
-                    _bikeLocation.value = location
-                }
+    init {
+        Log.i("SafarApp", "LocationViewModel initialized")
+    }
+
+    fun startTrackingDevice(deviceId: String?) {
+        // Stop previous tracking
+        stopTracking()
+
+        currentDeviceId = deviceId
+
+        if (deviceId != null) {
+            Log.i("SafarApp", "Starting to track device: $deviceId")
+            realtimeJob = viewModelScope.launch {
+                repo.observeRealtimeBikeLocation(deviceId)
+                    .catch { e ->
+                        Log.e("SafarApp", "Error collecting realtime location for device $deviceId: ${e.message}", e)
+                    }
+                    .collect { location ->
+                        Log.d("SafarApp", "New location received for device $deviceId: $location")
+                        _bikeLocation.value = location
+                    }
+            }
+        } else {
+            Log.i("SafarApp", "No device selected, stopping tracking")
+            _bikeLocation.value = null
         }
     }
+
+    fun stopTracking() {
+        realtimeJob?.cancel()
+        realtimeJob = null
+        Log.i("SafarApp", "Stopped tracking device: $currentDeviceId")
+    }
+
+    fun updateLocationForSelectedDevice(location: LocationData?) {
+        _bikeLocation.value = location
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        stopTracking()
+    }
 }
+

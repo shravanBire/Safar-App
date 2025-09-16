@@ -12,23 +12,35 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.safar.Screens.home.OpenStreetMapViewWithPolyline
 import com.example.safar.data.models.LocationData
+import com.example.safar.repository.DeviceRepository
 import com.example.safar.repository.LocationRepository
+import com.example.safar.utils.DeviceSelectionViewModelFactory
+import com.example.safar.viewModels.DeviceSelectionViewModel
 import io.github.jan.supabase.postgrest.from
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.math.*
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun TripsScreen(locationRepository: LocationRepository) {
-    var startDate by remember { mutableStateOf<Long?>(null) } // store as millis
-    var endDate by remember { mutableStateOf<Long?>(null) }   // store as millis
+    var startDate by remember { mutableStateOf<Long?>(null) }
+    var endDate by remember { mutableStateOf<Long?>(null) }
     var showResults by remember { mutableStateOf(false) }
-
     var tripLocations by remember { mutableStateOf<List<LocationData>>(emptyList()) }
 
+    // Device selection
+    val deviceRepository = DeviceRepository()
+    val deviceViewModel: DeviceSelectionViewModel = viewModel(
+        factory = DeviceSelectionViewModelFactory(deviceRepository)
+    )
+
+    val selectedDevice by deviceViewModel.selectedDevice.collectAsState()
+    val devices by deviceViewModel.devices.collectAsState()
     val coroutineScope = rememberCoroutineScope()
 
     Column(
@@ -45,6 +57,46 @@ fun TripsScreen(locationRepository: LocationRepository) {
 
         Spacer(modifier = Modifier.height(16.dp))
 
+        // Device Selection Dropdown
+        if (devices.isNotEmpty()) {
+            var expanded by remember { mutableStateOf(false) }
+
+            ExposedDropdownMenuBox(
+                expanded = expanded,
+                onExpandedChange = { expanded = !expanded }
+            ) {
+                OutlinedTextField(
+                    value = selectedDevice?.device_name ?: "Select Device",
+                    onValueChange = { },
+                    readOnly = true,
+                    label = { Text("Select Device") },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .menuAnchor()
+                )
+
+                ExposedDropdownMenu(
+                    expanded = expanded,
+                    onDismissRequest = { expanded = false }
+                ) {
+                    devices.forEach { device ->
+                        DropdownMenuItem(
+                            text = { Text(device.device_name) },
+                            onClick = {
+                                deviceViewModel.selectDevice(device)
+                                expanded = false
+                                showResults = false
+                            }
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+
+        // Date Selection
         Row(
             horizontalArrangement = Arrangement.SpaceBetween,
             modifier = Modifier.fillMaxWidth()
@@ -64,16 +116,31 @@ fun TripsScreen(locationRepository: LocationRepository) {
 
         Button(
             onClick = {
-                if (startDate != null && endDate != null && startDate!! <= endDate!!) {
-                    coroutineScope.launch {
-                        tripLocations = fetchTripData(locationRepository, startDate!!, endDate!!)
-                        showResults = true
+                selectedDevice?.let { device ->
+                    if (startDate != null && endDate != null && startDate!! <= endDate!!) {
+                        coroutineScope.launch {
+                            tripLocations = fetchTripDataForDevice(
+                                locationRepository,
+                                device.device_id,
+                                startDate!!,
+                                endDate!!
+                            )
+                            showResults = true
+                        }
                     }
                 }
             },
-            enabled = startDate != null && endDate != null,
+            enabled = startDate != null && endDate != null && selectedDevice != null,
         ) {
             Text("Show Trips")
+        }
+
+        if (selectedDevice == null) {
+            Text(
+                "Please select a device first",
+                color = MaterialTheme.colorScheme.error,
+                fontSize = 12.sp
+            )
         }
 
         if (showResults && tripLocations.isNotEmpty()) {
@@ -97,12 +164,16 @@ fun TripsScreen(locationRepository: LocationRepository) {
                     .fillMaxWidth()
                     .height(300.dp)
             )
+        } else if (showResults && tripLocations.isEmpty()) {
+            Spacer(modifier = Modifier.height(24.dp))
+            Text(
+                "No trip data found for selected dates",
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
 
-// -------------------------
-// Classic DatePickerDialog for min SDK 24
 @Composable
 fun DateSelector(
     label: String,
@@ -137,28 +208,21 @@ fun DateSelector(
     }
 }
 
-// -------------------------
-// Supabase fetch (fetch all → filter locally)
-suspend fun fetchTripData(locationRepository: LocationRepository, startMillis: Long, endMillis: Long): List<LocationData> {
+// Updated fetch function for specific device
+suspend fun fetchTripDataForDevice(
+    locationRepository: LocationRepository,
+    deviceId: String,
+    startMillis: Long,
+    endMillis: Long
+): List<LocationData> {
     return try {
-        val allTrips = locationRepository.getClient()
-            .from("locations")
-            .select()
-            .decodeList<LocationData>()
-
-        // filter locally
-        allTrips.filter { loc ->
-            val ts = loc.timestamp.toEpochMilliseconds()
-            ts in startMillis..(endMillis + 24 * 60 * 60 * 1000) // include end day
-        }
+        locationRepository.getLocationsByDeviceAndDateRange(deviceId, startMillis, endMillis)
     } catch (e: Exception) {
         e.printStackTrace()
         emptyList()
     }
 }
 
-// -------------------------
-// Analytics
 fun calculateTotalDistance(locations: List<LocationData>): Double {
     if (locations.size < 2) return 0.0
     var total = 0.0
