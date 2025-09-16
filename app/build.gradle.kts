@@ -52,53 +52,52 @@ android {
 }
 
 dependencies {
+    implementation("com.google.android.gms:play-services-location:21.3.0")
+    val supabaseVersion = "2.4.0"
+    implementation(platform("io.github.jan-tennert.supabase:bom:$supabaseVersion"))
 
-    dependencies {
+    implementation("com.jakewharton.threetenabp:threetenabp:1.4.4")
 
-        // AndroidX and Compose dependencies
-        implementation("androidx.core:core-ktx:1.12.0")
-        implementation("androidx.activity:activity-compose:1.8.2")
-        implementation(platform("androidx.compose:compose-bom:2023.08.00"))
-        implementation("androidx.compose.ui:ui")
-        implementation("androidx.compose.ui:ui-graphics")
-        implementation("androidx.compose.ui:ui-tooling-preview")
-        implementation("androidx.compose.material3:material3")
-        implementation("com.google.accompanist:accompanist-permissions:0.36.0")
-        implementation("androidx.navigation:navigation-compose:2.7.7")
-        implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.1")
-        implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.6.2")
-        implementation("androidx.lifecycle:lifecycle-runtime-compose:2.6.2")
 
-        // Kotlin dependencies
-        implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
-        implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
-        implementation("org.jetbrains.kotlinx:kotlinx-datetime:0.5.0")
+    // AndroidX and Compose
+    implementation("androidx.core:core-ktx:1.12.0")
+    implementation("androidx.activity:activity-compose:1.8.2")
+    implementation(platform("androidx.compose:compose-bom:2023.08.00"))
+    implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.ui:ui-graphics")
+    implementation("androidx.compose.ui:ui-tooling-preview")
+    implementation("androidx.compose.material3:material3")
+    implementation("com.google.accompanist:accompanist-permissions:0.36.0")
+    implementation("androidx.navigation:navigation-compose:2.7.7")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.1")
+    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.6.2")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.6.2")
 
-        // Maplibre
-        implementation("org.maplibre.gl:android-sdk:11.8.0")
+    // Kotlin Coroutines and Serialization
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-datetime:0.5.0")
 
-        // Ktor client
-        implementation("io.ktor:ktor-client-okhttp:2.3.11")
+    // Maplibre & Ktor
+    implementation("org.maplibre.gl:android-sdk:11.8.0")
+    implementation("io.ktor:ktor-client-okhttp:2.3.11")
 
-        // Supabase
-        val supabaseVersion = "2.4.0"
-        implementation("io.github.jan-tennert.supabase:postgrest-kt:$supabaseVersion")
-        implementation("io.github.jan-tennert.supabase:realtime-kt:$supabaseVersion")
+    // Supabase modules (version is now handled by the BOM)
+    implementation("io.github.jan-tennert.supabase:postgrest-kt")
+    implementation("io.github.jan-tennert.supabase:realtime-kt")
 
-        // Room (for potential future use)
-        implementation("androidx.room:room-runtime:2.6.1")
-        kapt("androidx.room:room-compiler:2.6.1")
-        implementation("androidx.room:room-ktx:2.6.1")
+    // Room (for future use)
+    implementation("androidx.room:room-runtime:2.6.1")
+    kapt("androidx.room:room-compiler:2.6.1")
+    implementation("androidx.room:room-ktx:2.6.1")
 
-        // Testing dependencies
-        testImplementation("junit:junit:4.13.2")
-        androidTestImplementation("androidx.test.ext:junit:1.2.1")
-        androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
-        androidTestImplementation(platform("androidx.compose:compose-bom:2023.08.00"))
-        androidTestImplementation("androidx.compose.ui:ui-test-junit4")
-        debugImplementation("androidx.compose.ui:ui-tooling")
-        debugImplementation("androidx.compose.ui:ui-test-manifest")
-    }
-
+    // Testing
+    testImplementation("junit:junit:4.13.2")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
+    androidTestImplementation(platform("androidx.compose:compose-bom:2023.08.00"))
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    debugImplementation("androidx.compose.ui:ui-tooling")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
 
 }

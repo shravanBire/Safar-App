@@ -14,6 +14,7 @@ import com.example.safar.Screens.setting.SettingScreen
 import com.example.safar.Screens.setting.UnitScreen
 import com.example.safar.Screens.setting.UnitViewModel
 import com.example.safar.Screens.trips.TripsScreen
+import com.example.safar.repository.LocationRepository
 import com.example.safar.viewModels.ThemeViewModel
 import org.maplibre.android.maps.MapView
 
@@ -24,7 +25,8 @@ fun AppNavigation(
     navController: NavHostController,
     themeViewModel: ThemeViewModel,
     innerPadding: PaddingValues,
-    unitViewModel: UnitViewModel
+    unitViewModel: UnitViewModel,
+    locationRepository: LocationRepository
 
 ) {
     NavHost(
@@ -33,7 +35,7 @@ fun AppNavigation(
         modifier = Modifier.padding(innerPadding)
     ) {
         composable(BottomBar.Home.route) { HomeScreen(unitViewModel) }
-        composable(BottomBar.Trips.route) { TripsScreen() }
+        composable(BottomBar.Trips.route) { TripsScreen(locationRepository = LocationRepository()) }
         composable(BottomBar.Settings.route) { SettingScreen(navController, themeViewModel = themeViewModel) }
         composable("units"){ UnitScreen(navController,unitViewModel)}
     }

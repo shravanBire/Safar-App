@@ -5,39 +5,61 @@ import android.util.Log
 import com.example.safar.SupabaseClientProvider
 import com.example.safar.data.models.LocationData
 import io.github.jan.supabase.realtime.PostgresAction
-import io.github.jan.supabase.realtime.PostgresAction.Insert
-import io.github.jan.supabase.realtime.realtime
-import io.github.jan.supabase.realtime.createChannel
+import io.github.jan.supabase.realtime.channel
+import io.github.jan.supabase.realtime.decodeRecord
 import io.github.jan.supabase.realtime.postgresChangeFlow
+import io.github.jan.supabase.realtime.realtime
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.mapNotNull
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.mapNotNull
+import kotlinx.coroutines.flow.onCompletion
+import kotlinx.coroutines.flow.onStart
 
 class LocationRepository {
+
     private val client = SupabaseClientProvider.client
 
-    fun getRealtimeBikeLocation(): Flow<LocationData?> {
-        // 1. Create a channel for your table
-        val channel = client.realtime.createChannel("bike_locations_channel")
+    fun getClient() = SupabaseClientProvider.client
 
-        // 2. Subscribe to the channel
-        channel.subscribe()
+    fun observeRealtimeBikeLocation(): Flow<LocationData> {
+        // Create a channel (name can be any unique string)
+        val channel = client.realtime.channel("realtime:public:locations")
 
-        // 3. Get the flow of changes from the channel
-        return channel.postgresChangeFlow<Insert>(
-            schema = "public",
-            table = "locations"
-        )
+        // Create a flow that listens to INSERT actions for the "locations" table
+        val changeFlow = channel.postgresChangeFlow<PostgresAction.Insert>(schema = "public") {
+            table = "locations" // configure the table inside the lambda (docs example)
+        }
+
+        return changeFlow
+            // subscribe to the channel when collection starts (subscribe is suspend, onStart is suspend-capable)
+            .onStart {
+                try {
+                    channel.subscribe(blockUntilSubscribed = true)
+                    Log.d("SafarApp", "Subscribed to realtime: public.locations")
+                } catch (t: Throwable) {
+                    Log.e("SafarApp", "Subscribe failed: ${t.message}", t)
+                }
+            }
+            // convert PostgresAction.Insert -> LocationData (decodeRecord is provided by the SDK)
             .mapNotNull { action ->
                 try {
-                    val location = action.decodeRecord<LocationData>()
-                    Log.d("SafarApp", "Realtime update: $location")
-                    location
+                    // decodeRecord<T>() returns the typed object from the record payload
+                    action.decodeRecord<LocationData>()
                 } catch (e: Exception) {
-                    Log.e("SafarApp", "Error decoding realtime update", e)
+                    Log.e("SafarApp", "Failed to decode LocationData from realtime payload: ${e.message}", e)
                     null
                 }
             }
             .distinctUntilChanged()
+            // unsubscribe when the flow completes (onCompletion is suspend-capable)
+            .onCompletion {
+                try {
+                    // safe best-effort unsubscribe
+                    channel.unsubscribe()
+                    Log.d("SafarApp", "Unsubscribed from realtime: public.locations")
+                } catch (t: Throwable) {
+                    Log.w("SafarApp", "Unsubscribe failed: ${t.message}")
+                }
+            }
     }
 }

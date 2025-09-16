@@ -10,5 +10,5 @@ data class LocationData(
     val latitude: Double,
     val longitude: Double,
     val speed: Double? = null,
-    val timestamp: Instant
+    val timestamp: Instant,
 )

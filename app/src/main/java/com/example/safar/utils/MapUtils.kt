@@ -5,10 +5,6 @@ import android.content.Context
 import android.location.Location
 import com.google.android.gms.location.LocationServices
 import kotlinx.coroutines.suspendCancellableCoroutine
-import kotlin.coroutines.resume
-
-import org.maplibre.android.camera.CameraPosition
-import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.maps.MapView
 
 @SuppressLint("MissingPermission")

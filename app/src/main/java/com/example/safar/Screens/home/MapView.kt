@@ -16,29 +16,39 @@ import org.maplibre.android.annotations.MarkerOptions
 import org.maplibre.android.camera.CameraUpdateFactory
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext // Add this import
 import androidx.compose.ui.unit.dp
 import org.maplibre.android.annotations.PolylineOptions
+import org.maplibre.android.maps.MapLibreMap
 
 @Composable
 fun OpenStreetMapView(
     modifier: Modifier = Modifier,
-    bikeLocation: LocationData?
+    bikeLocation: LocationData?,
+    onMapReady: (MapLibreMap) -> Unit = {}
 ) {
     val context = LocalContext.current
-    var marker: Marker? = null
+    var marker: Marker? by remember { mutableStateOf(null) }
+    var mapLibreMap: MapLibreMap? by remember { mutableStateOf(null) }
 
     val mapView = remember {
         MapView(context).apply {
             onCreate(null)
-            getMapAsync { mapLibreMap ->
-                mapLibreMap.setStyle(
+            getMapAsync { map ->
+                mapLibreMap = map
+                onMapReady(map) // return map ref to HomeScreen
+                map.setStyle(
                     Style.Builder().fromUri("https://tiles.openfreemap.org/styles/liberty")
-                )
-                mapLibreMap.cameraPosition = CameraPosition.Builder()
-                    .target(LatLng(20.5937, 78.9629))
-                    .zoom(4.0)
-                    .build()
+                ) {
+                    // Initial camera
+                    map.cameraPosition = CameraPosition.Builder()
+                        .target(LatLng(20.5937, 78.9629))
+                        .zoom(4.0)
+                        .build()
+                }
             }
         }
     }
@@ -50,35 +60,31 @@ fun OpenStreetMapView(
     }
 
     AndroidView(
-        factory = {
-            mapView
-        },
+        factory = { mapView },
         modifier = modifier.fillMaxWidth().height(500.dp),
-        update = { managedMapView -> // Use a descriptive name like managedMapView
-            bikeLocation?.let { data -> // Use a descriptive name like data
-                managedMapView.getMapAsync { map ->
-                    marker?.let { oldMarker ->
-                        map.removeMarker(oldMarker)
+        update = {
+            bikeLocation?.let { data ->
+                val bikeLatLng = LatLng(data.latitude, data.longitude)
+
+                mapLibreMap?.let { map ->
+                    if (marker == null) {
+                        // First time: create marker
+                        marker = map.addMarker(
+                            MarkerOptions()
+                                .position(bikeLatLng)
+                                .title("Bike Location")
+                        )
+                        map.animateCamera(CameraUpdateFactory.newLatLngZoom(bikeLatLng, 15.0))
+                    } else {
+                        // ✅ Only update position instead of creating new marker
+                        marker?.position = bikeLatLng
                     }
-
-                    val bikeLatLng = LatLng(data.latitude, data.longitude)
-
-                    marker = map.addMarker(
-                        MarkerOptions()
-                            .position(bikeLatLng)
-                            .title("Bike Location")
-                    )
-
-                    val cameraPosition = CameraPosition.Builder()
-                        .target(bikeLatLng)
-                        .zoom(15.0)
-                        .build()
-                    map.animateCamera(CameraUpdateFactory.newCameraPosition(cameraPosition))
                 }
             }
         }
     )
 }
+
 @Composable
 fun OpenStreetMapViewWithPolyline(
     coordinates: List<Pair<Double, Double>>,
@@ -118,4 +124,3 @@ fun OpenStreetMapViewWithPolyline(
             .height(400.dp)
     )
 }
-

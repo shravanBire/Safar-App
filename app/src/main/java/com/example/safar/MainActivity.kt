@@ -16,6 +16,7 @@ import androidx.navigation.compose.rememberNavController
 import com.example.safar.Screens.AppNavigation
 import com.example.safar.Screens.BottomNavBar
 import com.example.safar.Screens.setting.UnitViewModel
+import com.example.safar.repository.LocationRepository
 import org.maplibre.android.MapLibre
 import org.maplibre.android.WellKnownTileServer
 import com.example.safar.viewModels.ThemeViewModel
@@ -56,7 +57,8 @@ class MainActivity : ComponentActivity() {
                             navController = navController,
                             innerPadding = paddingValues,
                             themeViewModel = themeViewModel,
-                            unitViewModel = unitViewModel
+                            unitViewModel = unitViewModel,
+                            locationRepository = LocationRepository()
                         )
                     }
                 }

@@ -24,7 +24,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -39,6 +42,9 @@ import com.example.safar.viewModels.LocationViewModel
 import com.example.safar.viewModels.LocationViewModelFactory
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.rememberPermissionState
+import org.maplibre.android.camera.CameraUpdateFactory
+import org.maplibre.android.geometry.LatLng
+import org.maplibre.android.maps.MapLibreMap
 import org.maplibre.android.maps.MapView
 
 @OptIn(ExperimentalPermissionsApi::class)
@@ -46,18 +52,18 @@ import org.maplibre.android.maps.MapView
 fun HomeScreen(
     unitViewModel: UnitViewModel
 ) {
-    val Location by LocationViewModel.bikeLocation.collectAsState()
-    val currentSpeed = Location?.speed?.toInt() ?: 0
-
     val currentUnit = unitViewModel.unit.value
 
     val locationRepository = LocationRepository()
-
     val locationViewModel: LocationViewModel = viewModel(
         factory = LocationViewModelFactory(locationRepository)
     )
 
     val bikeLocation by locationViewModel.bikeLocation.collectAsState()
+    val currentSpeed = bikeLocation?.speed?.toInt() ?: 0
+
+    var mapLibreMap by remember { mutableStateOf<MapLibreMap?>(null) }
+
 
     Box(
         modifier = Modifier.fillMaxSize()
@@ -79,7 +85,8 @@ fun HomeScreen(
                     .height(500.dp)
                     .padding(12.dp)
                     .clip(RoundedCornerShape(16.dp)),
-                bikeLocation = bikeLocation
+                bikeLocation = bikeLocation,
+                onMapReady = { map -> mapLibreMap = map }
             )
         }
 
@@ -94,25 +101,37 @@ fun HomeScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                IconButton(onClick = { /*TODO*/ }) {
-                    Icon(
-                        imageVector = Icons.Default.Check,
-                        contentDescription = "Wi-Fi status",
-                        modifier = Modifier.size(32.dp)
-                    )
+                Column {
+                    Spacer(modifier = Modifier.height(120.dp))
+                    IconButton(onClick = { /*TODO*/ }) {
+                        Icon(
+                            imageVector = Icons.Default.Check,
+                            contentDescription = "Wi-Fi status",
+                            modifier = Modifier.size(32.dp)
+                        )
+                    }
                 }
-                Spacer(modifier = Modifier.width(20.dp))
-                Speedometer(currentSpeed = 30, unitLabel = currentUnit)
-                Spacer(modifier = Modifier.width(16.dp))
-                IconButton(
-                    onClick = { locationViewModel.fetchLatestBikeLocation() },
-                    modifier = Modifier.padding(16.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.LocationOn,
-                        contentDescription = "Current location of vehicle",
-                        modifier = Modifier.size(32.dp)
-                    )
+                Column {
+                    Speedometer(currentSpeed = currentSpeed, unitLabel = currentUnit)
+                }
+                Column {
+                    Spacer(modifier = Modifier.height(120.dp))
+                    IconButton(
+                        onClick = {
+                            bikeLocation?.let { loc ->
+                                val target = LatLng(loc.latitude, loc.longitude)
+                                mapLibreMap?.animateCamera(
+                                    CameraUpdateFactory.newLatLngZoom(target, 15.0)
+                                )
+                            }
+                        },
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.LocationOn,
+                            contentDescription = "Current location of vehicle",
+                            modifier = Modifier.size(32.dp)
+                        )
+                    }
                 }
             }
         }
