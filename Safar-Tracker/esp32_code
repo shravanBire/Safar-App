@@ -1,0 +1,650 @@
+#include <TinyGPSPlus.h>
+#include <HardwareSerial.h>
+
+// SIM800L setup - Use HardwareSerial1
+HardwareSerial sim800l(1); // Use Serial1 for SIM800L
+
+// GPS setup - Use HardwareSerial2  
+HardwareSerial neogps(2); // Use Serial2 for GPS
+
+// Supabase details
+String supabase_url = "your_url_here";
+String api_key = "your_pass_here";
+String device_id = "bike_001";
+
+// GPS object
+TinyGPSPlus gps;
+
+// Movement and timing variables
+float previousLat = 0.0;
+float previousLon = 0.0;
+unsigned long lastSendTime = 0;
+unsigned long lastMovementTime = 0;
+unsigned long stationaryStartTime = 0;
+bool wasMoving = false;
+
+// Thresholds and intervals
+const float minDistanceThreshold = 5.0; // meters - minimum movement to consider as "moving"
+const unsigned long movingInterval = 3000; // 3 seconds when moving
+const unsigned long baseStationaryInterval = 300000; // 5 minutes initially when stationary
+const unsigned long maxStationaryInterval = 3600000; // 1 hour maximum when stationary
+unsigned long currentStationaryInterval = baseStationaryInterval;
+
+// Connection status
+bool simReady = false;
+bool gprsConnected = false;
+
+void setup() {
+  Serial.begin(115200);
+  
+  Serial.println("=== ESP32 GPS Tracker with SIM800L ===");
+  Serial.println("Device ID: " + device_id);
+  
+  // Start SIM800L on Serial1 (GPIO4=RX, GPIO2=TX) - SAFER PINS
+  sim800l.begin(9600, SERIAL_8N1, 4, 2);
+  Serial.println("SIM800L initialized on Serial1 (GPIO4=RX, GPIO2=TX)");
+  
+  // Start GPS on Serial2 (GPIO16=RX, GPIO17=TX)
+  neogps.begin(9600, SERIAL_8N1, 16, 17);
+  Serial.println("GPS module started on Serial2 (GPIO16=RX, GPIO17=TX)");
+  
+  // Initialize SIM800L
+  initializeSIM800L();
+  
+  // Test connection after initialization
+  delay(3000);
+  if (gprsConnected) {
+    checkNetworkQuality();
+    testSupabaseConnection();
+  }
+  
+  // Initialize timing
+  lastSendTime = millis();
+  lastMovementTime = millis();
+}
+
+void loop() {
+  // Check SIM800L connection periodically
+  static unsigned long lastConnectionCheck = 0;
+  if (millis() - lastConnectionCheck > 60000) { // Check every minute
+    if (!simReady || !gprsConnected) {
+      Serial.println("Connection lost - reinitializing...");
+      initializeSIM800L();
+    }
+    lastConnectionCheck = millis();
+  }
+  
+  // Network quality check every 5 minutes
+  static unsigned long lastQualityCheck = 0;
+  if (millis() - lastQualityCheck > 300000) { // 5 minutes
+    if (gprsConnected) {
+      checkNetworkQuality();
+    }
+    lastQualityCheck = millis();
+  }
+  
+  // Process GPS data
+  while (neogps.available() > 0) {
+    if (gps.encode(neogps.read())) {
+      if (gps.location.isValid() && gps.location.isUpdated()) {
+        processGPSData();
+      } else {
+        // Show GPS status periodically when no fix
+        static unsigned long lastGPSStatus = 0;
+        if (millis() - lastGPSStatus > 15000) {
+          Serial.printf("Searching for GPS... Satellites: %d\n", gps.satellites.value());
+          lastGPSStatus = millis();
+        }
+      }
+    }
+  }
+  
+  delay(1000); // 1 second delay
+}
+
+void initializeSIM800L() {
+  Serial.println("Initializing SIM800L...");
+  
+  // Reset SIM800L
+  sim800l.println("AT");
+  delay(2000);
+  if (waitForResponse("OK", 3000)) {
+    Serial.println("SIM800L responding");
+  } else {
+    Serial.println("SIM800L not responding");
+    return;
+  }
+  
+  // Check SIM card
+  sim800l.println("AT+CPIN?");
+  delay(1000);
+  if (waitForResponse("READY", 3000)) {
+    Serial.println("SIM card ready");
+    simReady = true;
+  } else {
+    Serial.println("SIM card not ready");
+    return;
+  }
+  
+  // Check network registration
+  sim800l.println("AT+CREG?");
+  delay(2000);
+  String response = sim800l.readString();
+  if (response.indexOf("0,1") > 0 || response.indexOf("0,5") > 0) {
+    Serial.println("Network registered");
+  } else {
+    Serial.println("Network not registered, waiting...");
+    // Wait for network registration
+    for (int i = 0; i < 30; i++) {
+      delay(2000);
+      sim800l.println("AT+CREG?");
+      delay(1000);
+      response = sim800l.readString();
+      if (response.indexOf("0,1") > 0 || response.indexOf("0,5") > 0) {
+        Serial.println("Network registered after waiting");
+        break;
+      }
+      Serial.print(".");
+    }
+  }
+  
+  // Setup GPRS
+  setupGPRS_Enhanced();
+}
+
+void setupGPRS_Enhanced() {
+  Serial.println("Setting up enhanced GPRS...");
+  
+  // Try multiple APN configurations
+  String apns[] = {"airtelgprs.com", "www.airtelgprs.com", "airtelgprs"};
+  
+  for (int apnIndex = 0; apnIndex < 3; apnIndex++) {
+    Serial.println("Trying APN: " + apns[apnIndex]);
+    
+    // Close any existing bearer
+    sim800l.println("AT+SAPBR=0,1");
+    delay(3000);
+    
+    // Set connection type
+    sim800l.println("AT+SAPBR=3,1,\"CONTYPE\",\"GPRS\"");
+    delay(1000);
+    if (!waitForResponse("OK", 2000)) {
+      Serial.println("Failed to set connection type");
+      continue;
+    }
+    
+    // Set APN
+    sim800l.println("AT+SAPBR=3,1,\"APN\",\"" + apns[apnIndex] + "\"");
+    delay(1000);
+    if (!waitForResponse("OK", 2000)) {
+      Serial.println("Failed to set APN");
+      continue;
+    }
+    
+    // Set username and password (empty for most APNs)
+    sim800l.println("AT+SAPBR=3,1,\"USER\",\"\"");
+    delay(500);
+    sim800l.println("AT+SAPBR=3,1,\"PWD\",\"\"");
+    delay(500);
+    
+    // Open bearer with multiple attempts
+    bool bearerOpened = false;
+    for (int attempt = 1; attempt <= 3; attempt++) {
+      Serial.println("Opening bearer attempt " + String(attempt));
+      sim800l.println("AT+SAPBR=1,1");
+      delay(12000); // Wait longer for connection
+      
+      // Check bearer status
+      sim800l.println("AT+SAPBR=2,1");
+      delay(2000);
+      String response = sim800l.readString();
+      Serial.println("Bearer response: " + response);
+      
+      // Look for successful connection (should show IP address)
+      if (response.indexOf("1,1,") > 0 && response.indexOf("0.0.0.0") < 0) {
+        Serial.println("GPRS connected successfully with " + apns[apnIndex]);
+        gprsConnected = true;
+        bearerOpened = true;
+        
+        // Initialize HTTP
+        sim800l.println("AT+HTTPINIT");
+        delay(2000);
+        if (waitForResponse("OK", 3000)) {
+          Serial.println("HTTP service initialized");
+          return; // Success - exit function
+        }
+        break;
+      } else {
+        Serial.println("Bearer connection failed on attempt " + String(attempt));
+        delay(3000);
+      }
+    }
+    
+    if (bearerOpened) break; // If we got a connection, don't try other APNs
+  }
+  
+  if (!gprsConnected) {
+    Serial.println("All GPRS setup attempts failed");
+  }
+}
+
+void processGPSData() {
+  float currentLat = gps.location.lat();
+  float currentLon = gps.location.lng();
+  float speed = gps.speed.kmph();
+  unsigned long currentTime = millis();
+  
+  // Calculate distance from previous location
+  double distanceMoved = 0.0;
+  if (previousLat != 0.0 && previousLon != 0.0) {
+    distanceMoved = TinyGPSPlus::distanceBetween(
+      currentLat, currentLon,
+      previousLat, previousLon
+    );
+  }
+  
+  // Determine if vehicle is moving
+  bool isMoving = (distanceMoved >= minDistanceThreshold || speed > 5.0);
+  
+  // Update movement tracking
+  if (isMoving) {
+    lastMovementTime = currentTime;
+    if (!wasMoving) {
+      // Just started moving
+      Serial.println("Vehicle started moving - sending immediate update");
+      sendLocationData(currentLat, currentLon, speed, distanceMoved);
+      wasMoving = true;
+      stationaryStartTime = 0;
+      currentStationaryInterval = baseStationaryInterval;
+      return;
+    }
+  } else {
+    if (wasMoving) {
+      // Just stopped moving
+      Serial.println("Vehicle stopped - switching to stationary mode");
+      stationaryStartTime = currentTime;
+      wasMoving = false;
+    }
+  }
+  
+  // Determine send interval based on movement state
+  bool shouldSend = false;
+  
+  if (isMoving) {
+    // Vehicle is moving - send every 3 seconds
+    if (currentTime - lastSendTime >= movingInterval) {
+      shouldSend = true;
+    }
+  } else {
+    // Vehicle is stationary - progressive intervals
+    unsigned long stationaryDuration = currentTime - stationaryStartTime;
+    
+    // Gradually increase interval: 5min -> 15min -> 30min -> 1hour
+    if (stationaryDuration > 1800000) { // After 30 minutes stationary
+      currentStationaryInterval = maxStationaryInterval; // 1 hour
+    } else if (stationaryDuration > 900000) { // After 15 minutes stationary  
+      currentStationaryInterval = 1800000; // 30 minutes
+    } else if (stationaryDuration > 300000) { // After 5 minutes stationary
+      currentStationaryInterval = 900000; // 15 minutes
+    }
+    
+    if (currentTime - lastSendTime >= currentStationaryInterval) {
+      shouldSend = true;
+    }
+  }
+  
+  // Send data if conditions are met
+  if (shouldSend || previousLat == 0.0) { // Always send first reading
+    sendLocationData(currentLat, currentLon, speed, distanceMoved);
+  }
+  
+  // Update previous location
+  previousLat = currentLat;
+  previousLon = currentLon;
+}
+
+void sendLocationData(float lat, float lon, float spd, double distMoved) {
+  if (!simReady || !gprsConnected) {
+    Serial.println("SIM800L not ready - data not sent");
+    return;
+  }
+
+  // Try up to 3 times
+  for (int attempt = 1; attempt <= 3; attempt++) {
+    Serial.println("Send attempt " + String(attempt) + "/3");
+    
+    if (sendLocationDataAttempt(lat, lon, spd, distMoved)) {
+      Serial.println("✓ Data sent successfully on attempt " + String(attempt));
+      lastSendTime = millis();
+      return;
+    }
+    
+    if (attempt < 3) {
+      Serial.println("Retrying in 5 seconds...");
+      delay(5000);
+      
+      // Re-establish GPRS connection on second failure
+      if (attempt == 2) {
+        Serial.println("Re-establishing GPRS connection...");
+        setupGPRS_Enhanced();
+        if (!gprsConnected) {
+          Serial.println("Failed to re-establish GPRS");
+          return;
+        }
+      }
+    }
+  }
+  
+  Serial.println("✗ Failed to send data after 3 attempts");
+}
+
+bool sendLocationDataAttempt(float lat, float lon, float spd, double distMoved) {
+  // Check bearer status before sending
+  sim800l.println("AT+SAPBR=2,1");
+  delay(1000);
+  String bearerStatus = sim800l.readString();
+  
+  if (bearerStatus.indexOf("0.0.0.0") >= 0 || bearerStatus.indexOf("1,3,") >= 0) {
+    Serial.println("Bearer connection lost - reconnecting...");
+    setupGPRS_Enhanced();
+    if (!gprsConnected) return false;
+  }
+  
+  String movementState = (millis() - lastMovementTime < 10000) ? "moving" : "stationary";
+  Serial.printf("Sending: %.6f, %.6f | Speed: %.1f km/h | State: %s\n", 
+               lat, lon, spd, movementState.c_str());
+  
+  // Prepare JSON payload - SIMPLIFIED
+  String jsonData = "{";
+  jsonData += "\"device_id\":\"" + device_id + "\",";
+  jsonData += "\"latitude\":" + String(lat, 6) + ",";
+  jsonData += "\"longitude\":" + String(lon, 6) + ",";
+  jsonData += "\"speed\":" + String(spd, 1);
+  jsonData += "}";
+  
+  Serial.println("Payload: " + jsonData);
+  
+  // Clean start
+  sim800l.println("AT+HTTPTERM");
+  delay(2000);
+  
+  // Initialize HTTP
+  sim800l.println("AT+HTTPINIT");
+  delay(2000);
+  if (!waitForResponse("OK", 5000)) {
+    Serial.println("HTTP Init timeout");
+    return false;
+  }
+  
+  // Set CID
+  sim800l.println("AT+HTTPPARA=\"CID\",1");
+  delay(1000);
+  if (!waitForResponse("OK", 3000)) {
+    Serial.println("CID timeout");
+    sim800l.println("AT+HTTPTERM");
+    return false;
+  }
+  
+  // Set URL
+  sim800l.println("AT+HTTPPARA=\"URL\",\"" + supabase_url + "\"");
+  delay(1000);
+  if (!waitForResponse("OK", 3000)) {
+    Serial.println("URL timeout");
+    sim800l.println("AT+HTTPTERM");
+    return false;
+  }
+  
+  // Set content type
+  sim800l.println("AT+HTTPPARA=\"CONTENT\",\"application/json\"");
+  delay(1000);
+  if (!waitForResponse("OK", 3000)) {
+    Serial.println("Content-Type timeout");
+    sim800l.println("AT+HTTPTERM");
+    return false;
+  }
+  
+  // Set headers - MINIMAL APPROACH (just API key)
+  sim800l.println("AT+HTTPPARA=\"USERDATA\",\"apikey: " + api_key + "\"");
+  delay(1000);
+  if (!waitForResponse("OK", 3000)) {
+    Serial.println("Headers timeout");
+    sim800l.println("AT+HTTPTERM");
+    return false;
+  }
+  
+  // Set data length with longer timeout
+  sim800l.println("AT+HTTPDATA=" + String(jsonData.length()) + ",20000");
+  delay(1000);
+  if (!waitForResponse("DOWNLOAD", 8000)) {
+    Serial.println("DOWNLOAD prompt timeout");
+    sim800l.println("AT+HTTPTERM");
+    return false;
+  }
+  
+  // Send data
+  sim800l.print(jsonData);
+  delay(2000);
+  
+  // Execute POST with extended timeout
+  Serial.println("Executing HTTP POST...");
+  sim800l.println("AT+HTTPACTION=1");
+  delay(20000); // Extended timeout for slow network
+  
+  // Read response with timeout
+  String response = "";
+  unsigned long startTime = millis();
+  while (millis() - startTime < 15000) { // 15 second timeout
+    if (sim800l.available()) {
+      response += sim800l.readString();
+      break;
+    }
+    delay(100);
+  }
+  
+  Serial.println("HTTP Response: " + response);
+  
+  // Get detailed response
+  sim800l.println("AT+HTTPREAD");
+  delay(3000);
+  String httpResponse = sim800l.readString();
+  Serial.println("HTTP Body: " + httpResponse);
+  
+  // Parse status code
+  bool success = false;
+  if (response.indexOf("+HTTPACTION:") >= 0) {
+    int startPos = response.indexOf("+HTTPACTION:") + 12;
+    int firstComma = response.indexOf(',', startPos);
+    int secondComma = response.indexOf(',', firstComma + 1);
+    
+    if (firstComma > 0 && secondComma > 0) {
+      String statusCode = response.substring(firstComma + 1, secondComma);
+      statusCode.trim();
+      Serial.println("Status: " + statusCode);
+      
+      if (statusCode == "200" || statusCode == "201") {
+        success = true;
+      } else if (statusCode == "601") {
+        Serial.println("Network timeout error");
+      } else if (statusCode == "603") {
+        Serial.println("DNS resolution failed");
+      } else if (statusCode == "604") {
+        Serial.println("Stack busy");
+      } else if (statusCode == "400") {
+        Serial.println("Bad request - check JSON format");
+      } else if (statusCode == "401") {
+        Serial.println("Unauthorized - check API key");
+      } else if (statusCode == "403") {
+        Serial.println("Forbidden - check permissions");
+      }
+    }
+  }
+  
+  // Clean up
+  sim800l.println("AT+HTTPTERM");
+  delay(1000);
+  
+  return success;
+}
+
+// Helper function to wait for specific response
+bool waitForResponse(String expected, unsigned long timeout) {
+  String response = "";
+  unsigned long startTime = millis();
+  
+  while (millis() - startTime < timeout) {
+    if (sim800l.available()) {
+      response += sim800l.readString();
+      if (response.indexOf(expected) >= 0) {
+        return true;
+      }
+    }
+    delay(100);
+  }
+  
+  Serial.println("Timeout waiting for: " + expected);
+  Serial.println("Got: " + response);
+  return false;
+}
+
+void checkConnectionStatus() {
+  Serial.println("--- Connection Status ---");
+  
+  // Check signal strength
+  sim800l.println("AT+CSQ");
+  delay(1000);
+  Serial.println("Signal: " + sim800l.readString());
+  
+  // Check network registration
+  sim800l.println("AT+CREG?");
+  delay(1000);
+  Serial.println("Network: " + sim800l.readString());
+  
+  // Check GPRS bearer
+  sim800l.println("AT+SAPBR=2,1");
+  delay(1000);
+  Serial.println("Bearer: " + sim800l.readString());
+}
+
+void checkNetworkQuality() {
+  Serial.println("=== Network Diagnostics ===");
+  
+  // Signal quality
+  sim800l.println("AT+CSQ");
+  delay(1000);
+  String csq = sim800l.readString();
+  Serial.println("Signal Quality: " + csq);
+  
+  // Extract signal strength number
+  int csqStart = csq.indexOf("+CSQ: ");
+  if (csqStart >= 0) {
+    int commaPos = csq.indexOf(',', csqStart);
+    if (commaPos > csqStart) {
+      String signalStr = csq.substring(csqStart + 6, commaPos);
+      int signalLevel = signalStr.toInt();
+      if (signalLevel >= 20) {
+        Serial.println("Signal: Excellent (" + String(signalLevel) + ")");
+      } else if (signalLevel >= 15) {
+        Serial.println("Signal: Good (" + String(signalLevel) + ")");
+      } else if (signalLevel >= 10) {
+        Serial.println("Signal: Fair (" + String(signalLevel) + ")");
+      } else {
+        Serial.println("Signal: Poor (" + String(signalLevel) + ")");
+      }
+    }
+  }
+  
+  // Network operator
+  sim800l.println("AT+COPS?");
+  delay(2000);
+  String cops = sim800l.readString();
+  Serial.println("Operator: " + cops);
+  
+  // Bearer status
+  sim800l.println("AT+SAPBR=2,1");
+  delay(1000);
+  String bearer = sim800l.readString();
+  Serial.println("Bearer Status: " + bearer);
+  
+  Serial.println("========================");
+}
+
+void testSupabaseConnection() {
+  Serial.println("=== Testing Supabase Connection ===");
+  
+  // Simple test JSON
+  String testData = "{\"device_id\":\"test_device\",\"latitude\":0.0,\"longitude\":0.0,\"speed\":0.0}";
+  
+  sim800l.println("AT+HTTPTERM");
+  delay(2000);
+  
+  sim800l.println("AT+HTTPINIT");
+  delay(2000);
+  if (!waitForResponse("OK", 5000)) {
+    Serial.println("Test: HTTP Init failed");
+    return;
+  }
+  
+  sim800l.println("AT+HTTPPARA=\"CID\",1");
+  delay(1000);
+  
+  sim800l.println("AT+HTTPPARA=\"URL\",\"" + supabase_url + "\"");
+  delay(1000);
+  
+  sim800l.println("AT+HTTPPARA=\"CONTENT\",\"application/json\"");
+  delay(1000);
+  
+  // Test with minimal headers
+  sim800l.println("AT+HTTPPARA=\"USERDATA\",\"apikey: " + api_key + "\"");
+  delay(1000);
+  
+  sim800l.println("AT+HTTPDATA=" + String(testData.length()) + ",15000");
+  delay(1000);
+  
+  if (waitForResponse("DOWNLOAD", 8000)) {
+    sim800l.print(testData);
+    delay(2000);
+    
+    Serial.println("Test: Executing POST...");
+    sim800l.println("AT+HTTPACTION=1");
+    delay(15000);
+    
+    String response = sim800l.readString();
+    Serial.println("Test Response: " + response);
+    
+    // Check if successful
+    if (response.indexOf("200") > 0 || response.indexOf("201") > 0) {
+      Serial.println("✓ Supabase connection test SUCCESSFUL");
+    } else {
+      Serial.println("✗ Supabase connection test FAILED");
+      
+      sim800l.println("AT+HTTPREAD");
+      delay(3000);
+      String fullResponse = sim800l.readString();
+      Serial.println("Full Response: " + fullResponse);
+    }
+  } else {
+    Serial.println("Test: No DOWNLOAD prompt");
+  }
+  
+  sim800l.println("AT+HTTPTERM");
+  delay(1000);
+  Serial.println("=== Test Complete ===");
+}
+
+void printStatus() {
+  Serial.println("=== Device Status ===");
+  Serial.println("Device ID: " + device_id);
+  Serial.println("SIM Ready: " + String(simReady ? "Yes" : "No"));
+  Serial.println("GPRS: " + String(gprsConnected ? "Connected" : "Disconnected"));
+  Serial.println("GPS Fix: " + String(gps.location.isValid() ? "Yes" : "No"));
+  if (gps.location.isValid()) {
+    Serial.printf("Location: %.6f, %.6f\n", gps.location.lat(), gps.location.lng());
+    Serial.printf("Speed: %.1f km/h\n", gps.speed.kmph());
+  }
+  Serial.println("Satellites: " + String(gps.satellites.value()));
+  
+  unsigned long stationaryTime = (millis() - lastMovementTime) / 1000;
+  Serial.println("Stationary for: " + String(stationaryTime) + "s");
+  Serial.println("Current interval: " + String(currentStationaryInterval / 1000) + "s");
+  Serial.println("===================");
+}
