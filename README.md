@@ -54,7 +54,7 @@ Repository
 ↓
 Data Source (API / DB)
 
-## 🔌 ESP32 Tracker (`esp32-tracker/`)
+## 🔌 ESP32 Tracker (`Safar-Tracker/`)
 
 ### 🔧 Hardware Used
 - ESP32
