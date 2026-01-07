@@ -84,6 +84,7 @@ Data Source (API / DB)
   "longitude": 73.856744,
   "speed": 24.5
 }
+```
 
 ### ☁️ Backend (Supabase)
 REST-based API
